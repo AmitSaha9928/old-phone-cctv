@@ -9,6 +9,30 @@ function Step($t) { Write-Host "`n== $t" -ForegroundColor Cyan }
 function Ok($t) { Write-Host "   OK  $t" -ForegroundColor Green }
 function Warn($t) { Write-Host "   !!  $t" -ForegroundColor Yellow }
 
+# 0. Upgrade from the HomeCam prototype, if it is installed on this PC
+$startupDir = [Environment]::GetFolderPath('Startup')
+$oldLnk = Join-Path $startupDir 'HomeCam.lnk'
+if (Test-Path $oldLnk) {
+    Step 'Upgrading from HomeCam'
+    $oldDir = (New-Object -ComObject WScript.Shell).CreateShortcut($oldLnk).WorkingDirectory
+    Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'cctv\.py' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Ok 'Stopped the old HomeCam server'
+    $oldCfg = Join-Path $oldDir 'config.json'
+    if ($oldDir -and (Test-Path $oldCfg) -and -not (Test-Path "$root\config.json")) {
+        $c = Get-Content $oldCfg -Raw | ConvertFrom-Json
+        # keep the old footage where it is (a relative folder was relative to the old install)
+        if ($c.recordings_dir -and -not [IO.Path]::IsPathRooted($c.recordings_dir)) {
+            $c.recordings_dir = Join-Path $oldDir $c.recordings_dir
+        }
+        $json = $c | ConvertTo-Json -Depth 6
+        [IO.File]::WriteAllText("$root\config.json", $json, (New-Object Text.UTF8Encoding $false))
+        Ok "Kept your settings (port $($c.http_port), recordings in $($c.recordings_dir))"
+    }
+    Remove-Item $oldLnk -Force
+    Ok 'Removed the old HomeCam auto-start (its folder is untouched; delete it once you are happy)'
+}
+
 # 1. Python
 Step 'Python'
 $py = $null
@@ -42,8 +66,8 @@ if ($devices) {
     Ok "Phone found: $($devices.Line.Split("`t")[0])"
     & $pyExe $pyArg "$root\server\cctv.py" install-phone
 } else {
-    Warn 'No phone on adb. Plug it in by USB (USB debugging on) and run:  py -3 server\cctv.py install-phone'
-    Warn 'The app is already set up if you moved this folder from the PC that installed it.'
+    Ok 'No phone on USB - that is fine if the OldPhone CCTV app is already on your phones.'
+    Ok 'A phone that is not paired yet pairs with this PC automatically when it connects.'
 }
 
 # 4. Tailscale (HTTPS address for your phone - needed for live video + talking off this PC)
@@ -65,8 +89,7 @@ if ($ts) {
 
 # 5. Start with Windows
 Step 'Autostart'
-$startup = [Environment]::GetFolderPath('Startup')
-$lnk = Join-Path $startup 'OldPhone CCTV.lnk'
+$lnk = Join-Path $startupDir 'OldPhone CCTV.lnk'
 $ans = Read-Host '   Start OldPhone CCTV automatically when you log in? [Y/n]'
 if ($ans -notmatch '^[nN]') {
     $pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source

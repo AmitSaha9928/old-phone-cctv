@@ -82,6 +82,7 @@ setting global animator_duration_scale 0
 setting global wifi_scan_always_enabled 0
 setting global ble_scan_always_enabled 0
 setting global wifi_sleep_policy 2
+setting global mobile_data_always_on 0
 setting secure location_mode 0
 
 say "== Radios"
