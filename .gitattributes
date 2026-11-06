@@ -1,0 +1,10 @@
+# Store everything with LF; Windows-only scripts keep CRLF.
+# Phone scripts (*.sh) MUST be LF or they fail on Android.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.gif binary
+*.apk binary
