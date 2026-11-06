@@ -1,78 +1,106 @@
-# OldPhone CCTV: Mi A2 as a CCTV camera
+<h1 align="center">OldPhone CCTV</h1>
 
-A phone app streams the camera and microphone to a PC. The PC shows it live in a web page, records
-compressed MP4 clips that are kept for 2 days, and lets you talk through the phone's speaker. It works
-from your own phone too, through Tailscale.
+<p align="center"><b>Turn the old Android phone in your drawer into a CCTV security camera.</b><br>
+Live view, 24/7 recording, motion alerts to your phone, and two-way talk. Self-hosted on your own PC,
+with no cloud, no account, no subscription and no Docker.</p>
 
-```
- Mi A2 (OldPhone CCTV app)  --Wi-Fi or USB-->  PC: server/cctv.py  --> recordings\*.mp4 (5-min clips, 48 h)
-   camera + mic  ->  H.264 + PCM                    |
-   speaker      <-  talk audio                      +--> web viewer :8090  --> tailscale serve (HTTPS) --> your phone
-```
+<p align="center">
+  <a href="../../releases/latest"><b>Download for Windows</b></a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="docs/FAQ.md">FAQ</a>
+</p>
 
-## Moving to your PC
-Step-by-step with troubleshooting: **[SETUP-ON-YOUR-PC.md](SETUP-ON-YOUR-PC.md)**. Short version:
-1. Copy this whole folder (it already contains FFmpeg and adb in `tools\`). The `android-src\` and
-   `.claude\` folders are only needed for rebuilding the app, so they can be left out.
-2. Right-click `setup.ps1` → **Run with PowerShell**. It checks for Python (installs it with winget if
-   missing), installs/pairs the phone app if the phone is plugged in, sets up the Tailscale HTTPS address
-   and can add OldPhone CCTV to Windows startup.
-3. Double-click **Start CCTV.bat** → http://localhost:8090
+![Camera grid](docs/screenshots/live-grid.png)
 
-`config.json` holds the pairing key that the phone app was given. Keep it with the folder. If it's lost, plug
-the phone in and run `py -3 server\cctv.py install-phone` to pair again.
+<sub>Screenshots use the built-in simulated cameras (`dev/fake_phone.py`), which is why they show test patterns.</sub>
 
-## Daily use
-- **Live**: picture, Listen (phone mic), **hold to talk** (or tap once to keep talking), snapshot, flashlight.
-- **Camera switch** under the live picture: Rear (12 MP) / Front (20 MP). The Mi A2's two extra rear
-  sensors can only be opened by Xiaomi's own camera app, so they aren't offered.
-- **Recordings**: one continuous timeline per day. Tap or drag to scrub, zoom 24h / 6h / 1h / 10m
-  (mouse wheel pans when zoomed), play at up to 16×, ←/→ to step. Playback runs straight across files.
-- **Save footage**: set From/To (or Shift+drag on the timeline, or "Use playhead") and download that
-  exact stretch as one MP4. Cuts land on the nearest keyframe (every 2 s).
-- **Settings**: lens, quality, frame rate, bitrate, rotation, mic, speaker volume, recording on/off,
-  **where recordings are saved**, and how long they're kept. After changing the folder, new footage goes
-  there; earlier footage stays in the old folder (move it over if you want it on the timeline).
+## Why
 
-Recording is crash-safe: footage is written in 2-second fragments, so a power cut loses at most the
-last few seconds. Each 5-minute file is repacked into a normal MP4 when it closes.
-- **Phone mode**:
-  - *Surveillance* disables other apps (not deleted), turns off Bluetooth, location and mobile data, dims
-    the screen and starts the camera.
-  - *Normal* restores exactly what Surveillance changed (it keeps a record on the phone in
-    `/data/local/tmp/oldphonecctv-mode/`) and stops the camera.
-  - Both need the phone on adb (USB, or wireless debugging). Use *Preview changes* to see the list first.
+Old phones have a good camera, a microphone, a speaker, Wi-Fi and a battery that rides out power cuts.
+Projects for using them as cameras either died ([Haven](https://github.com/guardianproject/haven),
+[spydroid](https://github.com/fyhertz/spydroid-ipcamera)) or only cover the camera half, leaving you to wire up
+an NVR such as Frigate yourself. OldPhone CCTV is both halves in one download.
 
-## From your phone (Tailscale)
-Live video and talking need a secure (https) page, so use the address `setup.ps1` prints
-(`https://<pc-name>.<tailnet>.ts.net`). `tailscale serve` keeps it private to your tailnet. On the phone,
-"Add to Home screen" makes it open like an app.
+## Features
 
-## Storage
-At the default 720p / 15 fps / 1 Mbps, a day is about 10-11 GB, so 2 days ≈ 21 GB. 0.5 Mbps halves that.
-Clips older than the retention period are deleted every 5 minutes. If free space drops below 5 GB,
-the oldest clips go first.
+- **Live view** of every camera in a grid. Tap one for full screen, switch lens (rear/front), flashlight, rotate,
+  snapshot. Low latency (WebCodecs), works in Chrome, Edge and Safari, including on your phone.
+- **Two-way audio.** *Listen* to the camera's microphone, and **hold to talk** through its speaker.
+- **Continuous recording** to compressed MP4 (H.264 + AAC, about 0.5 GB per hour at 720p/15 fps). Old footage
+  is deleted after 1 to 14 days, your choice. Recording is crash-safe: a power cut loses seconds, not the clip.
+- **One timeline per day** instead of a folder of files. Drag to scrub, zoom 24h/6h/1h/10m, play at up to 16×.
+  **Export any time range** as a single video.
+- **Motion detection on the phone**, so it costs the PC nothing and scales to many cameras. It ignores lighting
+  changes and auto-exposure.
+- **Motion alerts to your phone** with a snapshot, through [ntfy](https://ntfy.sh) (free, open source, Android and
+  iPhone) or Telegram. Tapping the alert opens the recording at that moment. Arm or disarm with one tap.
+- **Multi-camera.** Phones on your Wi-Fi are found and paired automatically.
+- **Reachable from anywhere** with [Tailscale](https://tailscale.com): private HTTPS, no port forwarding.
+- **Surveillance mode** (optional, over USB) strips the phone down to camera-only for lower power and heat.
+  It disables other apps (nothing is uninstalled) and turns off Bluetooth, location, mobile data and the screen.
+  **Normal mode** puts back exactly what it changed.
+- **The phone restarts itself** after a reboot or power cut, with no app to open and nothing to tap.
+- **Small and dependency-free.** A 33 KB Android app with no libraries, and a Python standard-library server. FFmpeg
+  and adb come bundled in the Windows release.
 
-## Power tips for the phone
-- Keep it on a charger, somewhere cool. The viewer shows battery % and temperature (amber ≥ 45 °C).
-- Surveillance mode plus 720p/15 fps is the lowest-power setup. The screen can stay off.
-- The app restarts on its own after a reboot or power cut.
-
-## Turning the phone on when it's off
-A powered-off phone can't be woken over the network. Tested on this Mi A2 (stock Android 10):
-- **After any reboot or crash**, OldPhone CCTV starts by itself (verified).
-- **Power cuts**: the battery keeps the phone and camera running; keep it charged.
-- **Boot-when-powered doesn't work on the Mi A2.** `fastboot oem off-mode-charge 0` is accepted but
-  Xiaomi's bootloader ignores it: a fully off phone shows the charging battery and needs one press of the
-  power button. (It works on many other Qualcomm phones, e.g. Pixels and Motorolas.)
-
-## Files
-| Path | What |
+| Recordings and motion events | On your phone |
 |---|---|
-| `server/cctv.py` | PC server (Python standard library only) |
-| `web/` | viewer page |
-| `phone/OldPhoneCCTV.apk` | phone app; `phone/modes/*.sh` surveillance/normal scripts |
-| `tools/` | bundled `ffmpeg.exe` and adb |
-| `android-src/` | app source; `build.ps1` rebuilds the APK (needs the Android SDK) |
-| `config.json` | settings + phone pairing key (created on first run) |
-| `recordings/` | the clips |
+| ![Recordings](docs/screenshots/recordings.png) | ![Mobile](docs/screenshots/mobile.png) |
+
+## Quick start
+
+**You need:** an Android phone (7.0 or newer, any camera works), a Windows PC that stays on, both on the same Wi-Fi.
+
+1. **PC:** download the [latest release](../../releases/latest) zip, extract it (e.g. to `D:\OldPhoneCCTV`),
+   right-click **`setup.ps1` → Run with PowerShell**, then double-click **`Start CCTV.bat`**.
+   The viewer opens at `http://localhost:8090`.
+2. **Phone:** install `OldPhoneCCTV.apk` from the release, either from the phone's browser or with the PC:
+   enable USB debugging, plug it in, and setup installs it for you. Open the app and tap **Start camera**.
+3. The phone appears in the viewer within seconds and pairs with your PC. Done.
+   Put it on a charger and point it where you want. The screen can stay off.
+
+**Watch from your phone:** install Tailscale on the PC and your phone, then run `setup.ps1` again. It prints a
+private `https://your-pc.your-tailnet.ts.net` address. Browsers only allow live video decoding and the microphone
+on HTTPS pages, which is why this step matters. Use **Add to Home screen** to get it as an app.
+
+**Motion alerts:** Settings → *Alerts to your phone* → **New**, then **Save**. Install **ntfy**, subscribe to that
+topic, and press **Send a test alert**.
+
+More detail: [Setup guide](docs/SETUP.md) · [FAQ and troubleshooting](docs/FAQ.md) · [How it works](docs/ARCHITECTURE.md)
+
+## How it works
+
+```
+ Old phone (app)                         Your PC (server/cctv.py)                       You
+ camera -> H.264 encoder  ─┐                                                    ┌─> browser / phone (live, talk)
+ mic    -> 16 kHz PCM     ─┼─ TCP 47801 ─> per camera: recorder ─> MP4 clips ───┼─> timeline, export
+ motion -> event + JPEG   ─┘   (Wi-Fi      motion events (SQLite) ─> alerts ────┼─> ntfy / Telegram push
+ speaker <- talk audio   <──    or USB)    web viewer :8090 ─> tailscale serve ─┘
+```
+
+The phone does the expensive work in hardware (encoding, motion detection), so the PC only copies streams into
+files with FFmpeg. Details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Status
+
+**v1.0, working and in daily use** on a Xiaomi Mi A2 (stock Android 10). Windows is the packaged platform. The server
+is plain Python and should run on Linux and macOS with `ffmpeg` and `adb` installed, but that isn't packaged or
+tested yet. Help wanted: Linux/macOS packaging, more phones tested, iOS/Android viewer apps.
+
+## Contributing
+
+Issues and pull requests are welcome. No phone needed to hack on the server or viewer:
+
+```bash
+python dev/fake_phone.py --name "Front door" --port 47901 --source bars
+python dev/fake_phone.py --name "Garage" --port 47902 --source gradient
+python server/cctv.py
+```
+
+The phone app builds without Android Studio or Gradle: `android/build.ps1` needs only the Android SDK and a JDK.
+
+## Licence
+
+[MIT](LICENSE). FFmpeg (bundled in releases) is LGPL/GPL, see `tools/FFMPEG-LICENSE.txt` in the release.
+Not affiliated with Xiaomi, Google, Tailscale or ntfy.

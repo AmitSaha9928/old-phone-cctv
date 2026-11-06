@@ -11,6 +11,7 @@ const S = {
   armedBusy: false,
 };
 const canDecode = 'VideoDecoder' in window && window.isSecureContext;
+let pendingFocus = null;   // camera id from a #cam= link, applied once cameras are known
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtGB = (g) => (g == null ? '?' : g < 1 ? Math.round(g * 1000) + ' MB' : g.toFixed(1) + ' GB');
 const fmtDur = (s) => (s > 86400 ? Math.floor(s / 86400) + 'd ' : '') + Math.floor((s % 86400) / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
@@ -355,6 +356,10 @@ function onState(s) {
   $('appName').textContent = s.name || 'OldPhone CCTV';
   document.title = s.name || 'OldPhone CCTV';
   const cams = s.cameras;
+  if (pendingFocus) {
+    const c = cams.find((x) => x.id === pendingFocus);
+    if (c) { pendingFocus = null; onState.restored = true; S.focus = c.slot; sendWatch(); }
+  }
   // restore a remembered focus once cameras are known
   if (S.focus == null && !onState.restored && cams.length > 1) {
     onState.restored = true;
@@ -841,6 +846,10 @@ setInterval(() => { if ($('tab-recordings').classList.contains('on')) loadRecord
 
 // ------------------------------------------------------------------ deep link from an alert: #rec=<camera>@<unix time>
 function handleHash() {
+  const t = location.hash.match(/^#tab=(live|recordings|settings)/);
+  if (t) { showTab(t[1]); return; }
+  const f = location.hash.match(/^#cam=(.+)/);
+  if (f) { pendingFocus = decodeURIComponent(f[1]); showTab('live'); return; }
   const m = location.hash.match(/^#rec=([^@]+)@(\d+)/);
   if (!m) return;
   recCam = decodeURIComponent(m[1]);

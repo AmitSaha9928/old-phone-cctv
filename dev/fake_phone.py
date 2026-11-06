@@ -27,11 +27,26 @@ T_HELLO, T_VIDEO, T_AUDIO, T_STATUS, T_MOTION, T_SNAPSHOT = 1, 2, 3, 4, 5, 6
 T_TALK, T_CMD = 0x10, 0x11
 
 
-def make_media(ffmpeg, name, tmp):
+SOURCES = {  # animated FFmpeg test sources, so several simulated cameras look different
+    "bars": "testsrc2=size=1280x720:rate=15",
+    "gradient": "gradients=size=1280x720:rate=15:speed=0.03:c0=0x1d3b53:c1=0x3ddc97:c2=0x0b0e13",
+    "life": "life=size=1280x720:rate=15:mold=12:ratio=0.08:life_color=0x3ddc97:death_color=0x0e1a22:mold_color=0x11252d",
+    "fractal": "mandelbrot=size=1280x720:rate=15",
+}
+
+
+def make_media(ffmpeg, name, tmp, source="bars"):
     h264, jpg = os.path.join(tmp, "v.h264"), os.path.join(tmp, "s.jpg")
     label = name.replace(":", " ").replace("'", "")
-    vf = f"drawtext=text='{label}':fontsize=64:fontcolor=white:box=1:boxcolor=black@0.5:x=40:y=40"
-    src = "testsrc2=size=1280x720:rate=15"
+    font = ""
+    for f in ("C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/System/Library/Fonts/Helvetica.ttc"):
+        if os.path.exists(f):
+            font = ":fontfile='" + f.replace(":", "\\:") + "'"
+            break
+    vf = (f"drawtext=text='{label}'{font}:fontsize=56:fontcolor=white:box=1:boxcolor=black@0.45:boxborderw=18:"
+          f"x=(w-tw)/2:y=h-th-50")
+    src = SOURCES.get(source, SOURCES["bars"])
     for f in (vf, None):  # drawtext needs a font; fall back to the plain pattern
         args = [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", src, "-t", "20"]
         if f:
@@ -40,8 +55,8 @@ def make_media(ffmpeg, name, tmp):
                  "-x264-params", "aud=1", "-bsf:v", "h264_mp4toannexb", "-f", "h264", h264]
         if subprocess.run(args).returncode == 0:
             break
-    subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180",
-                    "-frames:v", "1", jpg], check=True)
+    subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "h264", "-i", h264,
+                    "-vf", r"select=eq(n\,45),scale=640:-2", "-frames:v", "1", jpg], check=True)
     aus, cur = [], []
     for n in split_nals(open(h264, "rb").read()):
         if n[0] & 0x1F == 9 and cur:
@@ -176,6 +191,7 @@ def main():
     ap.add_argument("--id", default=None)
     ap.add_argument("--port", type=int, default=47901)
     ap.add_argument("--motion-every", type=int, default=30)
+    ap.add_argument("--source", default="bars", choices=sorted(SOURCES), help="what the simulated camera shows")
     a = ap.parse_args()
     a.id = a.id or "sim" + str(a.port)
     ffmpeg = find_tool("ffmpeg", "", ROOT)
@@ -183,7 +199,7 @@ def main():
         sys.exit("ffmpeg not found")
     tmp = tempfile.mkdtemp(prefix="fakephone")
     try:
-        config, frames, jpeg = make_media(ffmpeg, a.name, tmp)
+        config, frames, jpeg = make_media(ffmpeg, a.name, tmp, a.source)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     p = Phone(a, config, frames, jpeg)

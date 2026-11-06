@@ -258,9 +258,11 @@ input[type=range] { width: 50%; accent-color: var(--accent); }
 
 /* ---------- phones ---------- */
 @media (max-width: 720px) {
-  .top { grid-template-columns: 1fr auto; padding-left: 16px; padding-right: 16px; }
+  /* no backdrop-filter here: it would make the fixed bottom tab bar position itself inside the header */
+  .top { grid-template-columns: 1fr auto; padding-left: 16px; padding-right: 16px; backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
   .pills { justify-content: flex-end; }
-  .pills .pill:nth-child(n+3) { display: none; }
+  .pills #pillRec { display: none; }   /* keep Live + Armed on phones */
+  .toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
   .tabs {
     position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 20;
     justify-content: space-around; padding: 6px; border: 1px solid var(--line); border-radius: 16px;

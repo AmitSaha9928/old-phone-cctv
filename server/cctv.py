@@ -52,7 +52,8 @@ DEFAULTS = {
     "password": "",                # optional HTTP Basic password (any user name)
     "armed": True,                 # send motion alerts
     "alerts": {"ntfy_url": "", "telegram_token": "", "telegram_chat": "", "cooldown_s": 60, "viewer_url": ""},
-    "manual_hosts": [],            # phone IPs to connect to directly (e.g. over Tailscale)
+    "manual_hosts": [],            # phone IPs to connect to directly (e.g. over Tailscale), "ip" or "ip:port"
+    "auto_discover": True,         # find phones on the LAN and over USB; false = only manual_hosts
     "cameras": {},                 # phone id -> {"name", "rotate", "record", "alerts"}
     "ffmpeg": "",
     "adb": "",
@@ -571,6 +572,8 @@ class App:
         targets = set()
         for h in self.cfg.get("manual_hosts", []):
             targets.add(("host", h))
+        if not self.cfg.get("auto_discover", True):
+            return {t for t in targets if self.suppressed.get(t, 0) < now}
         for where in live:
             targets.add(("wifi", where))
         for serial in await self.usb_serials():
