@@ -10,7 +10,11 @@ New-Item -ItemType Directory -Force "$out\tools\platform-tools", "$out\phone\mod
 
 Copy-Item "$root\server\*.py" "$out\server"
 Copy-Item "$root\web\*" "$out\web" -Recurse
-Copy-Item "$root\phone\modes\*.sh" "$out\phone\modes"
+# Phone scripts must have LF line endings or Android's shell rejects them
+foreach ($sh in Get-ChildItem "$root\phone\modes\*.sh") {
+    $t = [IO.File]::ReadAllText($sh.FullName) -replace "`r`n", "`n"
+    [IO.File]::WriteAllText("$out\phone\modes\$($sh.Name)", $t, (New-Object Text.UTF8Encoding $false))
+}
 $apk = "$root\phone\OldPhoneCCTV.apk"
 if (-not (Test-Path $apk)) { throw "Build the phone app first: android\build.ps1" }
 Copy-Item $apk "$out\phone"

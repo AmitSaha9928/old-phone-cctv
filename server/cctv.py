@@ -1285,7 +1285,14 @@ def switch_mode(cfg, mode, dry_run=False, serial=None):
             return 1, ("No phone on adb." if not serials else
                        "Several phones on adb - pick one: " + ", ".join(serials))
         serial = serials[0]
-    code, out = adb_cmd(cfg, "-s", serial, "push", script, f"/data/local/tmp/oldphonecctv-{mode}.sh")
+    # Push an LF-only copy: a script saved with Windows line endings fails in Android's shell.
+    import tempfile
+    with open(script, "rb") as f:
+        body = f.read().replace(b"\r\n", b"\n")
+    tmp = os.path.join(tempfile.gettempdir(), f"oldphonecctv-{mode}.sh")
+    with open(tmp, "wb") as f:
+        f.write(body)
+    code, out = adb_cmd(cfg, "-s", serial, "push", tmp, f"/data/local/tmp/oldphonecctv-{mode}.sh")
     if code:
         return code, "Phone not reachable over adb.\n" + out
     flag = " --dry-run" if dry_run else ""
