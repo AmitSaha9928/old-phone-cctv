@@ -1298,6 +1298,9 @@ def cli():
         except KeyboardInterrupt:
             pass
         return
+    if args[0] in ("--version", "version"):
+        print(VERSION)
+        return
     cfg = load_config()
     if args[0] == "install-phone":
         code, out = install_phone(cfg, args[1] if len(args) > 1 else None)
