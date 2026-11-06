@@ -1,0 +1,26 @@
+# Private: never commit
+config.json
+*.keystore
+*.jks
+*.idsig
+
+# Footage and runtime files
+recordings/
+*.mp4
+*.rec.mp4
+events.db
+
+# Build output and bundled binaries (shipped in release zips, not in git)
+android/build/
+phone/*.apk
+tools/
+dist/
+
+# Python / OS / editor
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>OldPhone CCTV</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="28" height="28">
+    <span id="camName">OldPhone CCTV</span>
+  </div>
+  <div class="pills">
+    <span class="pill" id="pillLive"><i class="dot"></i><b>Connecting</b></span>
+    <span class="pill rec" id="pillRec" hidden><i class="dot"></i>REC</span>
+    <span class="pill" id="pillBattery" hidden></span>
+    <span class="pill" id="pillTemp" hidden></span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="live" class="on">Live</button>
+    <button data-tab="recordings">Recordings</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+</header>
+
+<main>
+  <!-- LIVE -->
+  <section id="tab-live" class="tab on">
+    <div class="stage" id="stage">
+      <canvas id="video"></canvas>
+      <div class="overlay tl"><span class="live-dot"></span><span id="clock"></span></div>
+      <div class="overlay tr" id="stats"></div>
+      <div class="offline" id="offline">
+        <div class="spinner"></div>
+        <p id="offlineMsg">Connecting to the camera…</p>
+      </div>
+      <button class="fs" id="btnFull" title="Full screen" aria-label="Full screen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+      </button>
+    </div>
+
+    <div class="camswitch" id="camSwitch" role="radiogroup" aria-label="Camera"></div>
+
+    <div class="controls">
+      <button class="ctl" id="btnListen" aria-pressed="false" title="Listen">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M16 9l5 6M21 9l-5 6"/></svg>
+        <span>Listen</span>
+      </button>
+      <button class="ctl" id="btnSnap" title="Save a snapshot">
+        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <span>Snapshot</span>
+      </button>
+      <button class="talk" id="btnTalk" title="Hold to talk (or tap to keep talking)">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+        <span id="talkLabel">Hold to talk</span>
+      </button>
+      <button class="ctl" id="btnRotate" title="Rotate the picture 90° (also applies to recordings)">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+        <span>Rotate</span>
+      </button>
+      <button class="ctl" id="btnTorch" aria-pressed="false" title="Flashlight">
+        <svg viewBox="0 0 24 24"><path d="M8 3h8v4l-2 3v11h-4V10L8 7z"/><path d="M11 13h2"/></svg>
+        <span>Light</span>
+      </button>
+    </div>
+    <p class="note" id="liveNote" hidden></p>
+  </section>
+
+  <!-- RECORDINGS -->
+  <section id="tab-recordings" class="tab">
+    <div class="days" id="days"></div>
+
+    <div class="player">
+      <div class="pv">
+        <video id="player" playsinline preload="auto"></video>
+        <div class="pv-time" id="pvTime">—</div>
+        <div class="pv-empty" id="pvEmpty">Tap or drag on the timeline to watch any moment</div>
+      </div>
+      <div class="transport">
+        <button class="tbtn" id="btnBack" title="Back 10 s"><svg viewBox="0 0 24 24"><path d="M11 7 6 12l5 5M18 7l-5 5 5 5"/></svg></button>
+        <button class="tbtn play" id="btnPlay" title="Play / pause"><svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="tbtn" id="btnFwd" title="Forward 10 s"><svg viewBox="0 0 24 24"><path d="m13 7 5 5-5 5M6 7l5 5-5 5"/></svg></button>
+        <select id="speed" title="Playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select>
+        <span class="grow"></span>
+        <div class="zoom" id="zoom">
+          <button data-span="86400" class="on">24h</button><button data-span="21600">6h</button><button data-span="3600">1h</button><button data-span="600">10m</button>
+        </div>
+      </div>
+      <div class="scrub" id="scrub">
+        <div class="track" id="track">
+          <div class="sel" id="tlSel" hidden></div>
+          <div class="cursor" id="tlCursor" hidden><span id="cursorLabel"></span></div>
+          <div class="hover" id="tlHover" hidden></div>
+        </div>
+        <div class="ticks" id="ticks"></div>
+      </div>
+    </div>
+
+    <div class="card export">
+      <h3>Save footage</h3>
+      <p class="hint">Pick any stretch of time and download it as one video. Drag on the timeline with <b>Shift</b> held (or use the buttons) to select.</p>
+      <div class="export-row">
+        <label>From <input type="time" step="1" id="exFrom"></label>
+        <button class="btn ghost" id="exFromNow">Use playhead</button>
+        <label>To <input type="time" step="1" id="exTo"></label>
+        <button class="btn ghost" id="exToNow">Use playhead</button>
+        <span class="grow"></span>
+        <span class="hint" id="exLen"></span>
+        <button class="btn primary" id="exGo">Download video</button>
+      </div>
+    </div>
+    <p class="empty" id="noClips" hidden>No recordings yet. Footage appears here a few minutes after the camera starts.</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="tab">
+    <div class="cards">
+      <div class="card">
+        <h3>Camera</h3>
+        <label class="row">Lens
+          <select id="setCamera"><option value="0">Rear</option><option value="1">Front</option></select>
+        </label>
+        <label class="row">Quality
+          <select id="setQuality">
+            <option value="640x480">Low · 480p</option>
+            <option value="1280x720">Standard · 720p</option>
+            <option value="1920x1080">High · 1080p</option>
+          </select>
+        </label>
+        <label class="row">Frame rate
+          <select id="setFps"><option>10</option><option>15</option><option>20</option><option>30</option></select>
+        </label>
+        <label class="row">Bitrate
+          <select id="setBitrate">
+            <option value="500000">0.5 Mbps · smallest files</option>
+            <option value="1000000">1 Mbps · balanced</option>
+            <option value="2000000">2 Mbps · sharp</option>
+            <option value="4000000">4 Mbps · very sharp</option>
+          </select>
+        </label>
+        <label class="row">Rotate picture
+          <select id="setRotate"><option value="0">No rotation</option><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">90° anticlockwise</option></select>
+        </label>
+        <label class="row">Microphone
+          <span class="switch"><input type="checkbox" id="setAudio"><i></i></span>
+        </label>
+        <label class="row">Speaker volume
+          <input type="range" id="setVolume" min="0" max="100" step="5">
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Recording</h3>
+        <label class="row">Record continuously
+          <span class="switch"><input type="checkbox" id="setRecord"><i></i></span>
+        </label>
+        <div class="row col">Save recordings in
+          <div class="dirrow"><input type="text" id="setDir" spellcheck="false" placeholder="D:\CCTV"><button class="btn" id="btnDir">Save</button></div>
+        </div>
+        <label class="row">Keep recordings for
+          <select id="setRetention"><option value="24">1 day</option><option value="48">2 days</option><option value="72">3 days</option><option value="168">7 days</option></select>
+        </label>
+        <div class="storage">
+          <div class="bar"><i id="storageBar"></i></div>
+          <p id="storageText"></p>
+        </div>
+        <p class="hint" id="recError" hidden></p>
+      </div>
+
+      <div class="card wide">
+        <h3>Phone mode</h3>
+        <p class="hint">Surveillance mode turns the phone into a camera-only device: other apps disabled, Bluetooth, location and mobile data off, screen dimmed. Normal mode restores the apps and settings exactly as they were. Nothing is uninstalled. Needs the phone connected to ADB (USB or wireless debugging).</p>
+        <div class="modes">
+          <button class="mode" data-mode="surveillance">
+            <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg>
+            <b>Surveillance</b><span>Camera only, lowest power</span>
+          </button>
+          <button class="mode" data-mode="normal">
+            <svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>
+            <b>Normal</b><span>Everything back as before</span>
+          </button>
+        </div>
+        <div class="mode-actions">
+          <button class="btn ghost" id="btnPreview">Preview changes</button>
+          <button class="btn ghost" id="btnReinstall">Repair phone app</button>
+        </div>
+        <pre class="log" id="modeLog" hidden></pre>
+      </div>
+
+      <div class="card">
+        <h3>Phone</h3>
+        <dl class="info" id="phoneInfo"></dl>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
