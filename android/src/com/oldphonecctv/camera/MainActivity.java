@@ -75,6 +75,13 @@ public class MainActivity extends Activity {
         battery.setOnClickListener(v -> askBatteryExemption());
         root.addView(battery, buttonParams(dp(12)));
 
+        Button unpair = button("Reset pairing");
+        unpair.setOnClickListener(v -> {
+            getSharedPreferences("cfg", MODE_PRIVATE).edit().remove("key").commit();
+            android.widget.Toast.makeText(this, "Pairing reset. The next PC that connects will be trusted.", android.widget.Toast.LENGTH_LONG).show();
+        });
+        root.addView(unpair, buttonParams(dp(12)));
+
         TextView hint = text("You can turn the screen off. The camera keeps running, and starts again by itself after a reboot.", 14, DIM);
         hint.setPadding(0, dp(24), 0, 0);
         root.addView(hint);
@@ -109,7 +116,8 @@ public class MainActivity extends Activity {
         String ip = CamService.wifiIp();
         sb.append("Phone address   ").append(ip == null ? "no Wi-Fi" : ip + ":" + CamService.PORT).append('\n');
         sb.append("Viewer          ").append(CamService.viewer == null ? "not connected" : CamService.viewer).append('\n');
-        sb.append("Pairing key     ").append(prefs.getString("key", "(starts with the camera)"));
+        sb.append("Camera name     ").append(prefs.getString("name", Build.MODEL)).append('\n');
+        sb.append("Paired with PC  ").append(prefs.getString("key", null) != null ? "yes" : "no — the first PC that connects pairs");
         if (CamService.lastError != null) sb.append("\n\n").append(CamService.lastError);
         details.setText(sb.toString());
         toggle.setText(on ? "Stop camera" : "Start camera");

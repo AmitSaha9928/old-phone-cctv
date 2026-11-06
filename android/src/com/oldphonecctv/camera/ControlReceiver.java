@@ -30,6 +30,10 @@ public class ControlReceiver extends BroadcastReceiver {
             case "com.oldphonecctv.camera.STOP":
                 ctx.startService(new Intent(ctx, CamService.class).setAction(CamService.ACTION_STOP));
                 break;
+            case "com.oldphonecctv.camera.UNPAIR":
+                // Forget the PC: the next PC that connects becomes the trusted one.
+                prefs.edit().remove("key").commit();
+                break;
             case "com.oldphonecctv.camera.SET_KEY": {
                 String key = intent.getStringExtra("key");
                 if (key != null && key.length() >= 6) prefs.edit().putString("key", key).commit();

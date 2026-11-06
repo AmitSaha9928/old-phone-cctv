@@ -16,13 +16,14 @@
 <header class="top">
   <div class="brand">
     <img src="icon.svg" alt="" width="28" height="28">
-    <span id="camName">OldPhone CCTV</span>
+    <span id="appName">OldPhone CCTV</span>
   </div>
   <div class="pills">
     <span class="pill" id="pillLive"><i class="dot"></i><b>Connecting</b></span>
     <span class="pill rec" id="pillRec" hidden><i class="dot"></i>REC</span>
-    <span class="pill" id="pillBattery" hidden></span>
-    <span class="pill" id="pillTemp" hidden></span>
+    <button class="pill armed" id="btnArmed" title="When armed, motion sends alerts to your phone">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg><b>Armed</b>
+    </button>
   </div>
   <nav class="tabs" id="tabs">
     <button data-tab="live" class="on">Live</button>
@@ -34,49 +35,51 @@
 <main>
   <!-- LIVE -->
   <section id="tab-live" class="tab on">
-    <div class="stage" id="stage">
-      <canvas id="video"></canvas>
-      <div class="overlay tl"><span class="live-dot"></span><span id="clock"></span></div>
-      <div class="overlay tr" id="stats"></div>
-      <div class="offline" id="offline">
-        <div class="spinner"></div>
-        <p id="offlineMsg">Connecting to the camera…</p>
-      </div>
-      <button class="fs" id="btnFull" title="Full screen" aria-label="Full screen">
-        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+    <div class="focusbar" id="focusBar" hidden>
+      <button class="btn ghost" id="btnAll">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+        All cameras
       </button>
     </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty-live" id="emptyLive" hidden>
+      <div class="spinner"></div>
+      <h3>Looking for cameras…</h3>
+      <p>Install the OldPhone CCTV app on an old phone, tap <b>Start camera</b>, and keep it on the same Wi-Fi as this PC. It shows up here by itself.</p>
+    </div>
 
-    <div class="camswitch" id="camSwitch" role="radiogroup" aria-label="Camera"></div>
-
-    <div class="controls">
-      <button class="ctl" id="btnListen" aria-pressed="false" title="Listen">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M16 9l5 6M21 9l-5 6"/></svg>
-        <span>Listen</span>
-      </button>
-      <button class="ctl" id="btnSnap" title="Save a snapshot">
-        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-        <span>Snapshot</span>
-      </button>
-      <button class="talk" id="btnTalk" title="Hold to talk (or tap to keep talking)">
-        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
-        <span id="talkLabel">Hold to talk</span>
-      </button>
-      <button class="ctl" id="btnRotate" title="Rotate the picture 90° (also applies to recordings)">
-        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-        <span>Rotate</span>
-      </button>
-      <button class="ctl" id="btnTorch" aria-pressed="false" title="Flashlight">
-        <svg viewBox="0 0 24 24"><path d="M8 3h8v4l-2 3v11h-4V10L8 7z"/><path d="M11 13h2"/></svg>
-        <span>Light</span>
-      </button>
+    <div id="focusControls" hidden>
+      <div class="camswitch" id="camSwitch" role="radiogroup" aria-label="Lens"></div>
+      <div class="controls">
+        <button class="ctl" id="btnListen" aria-pressed="false" title="Listen">
+          <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M16 9l5 6M21 9l-5 6"/></svg>
+          <span>Listen</span>
+        </button>
+        <button class="ctl" id="btnSnap" title="Save a snapshot">
+          <svg viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          <span>Snapshot</span>
+        </button>
+        <button class="talk" id="btnTalk" title="Hold to talk (or tap to keep talking)">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          <span id="talkLabel">Hold to talk</span>
+        </button>
+        <button class="ctl" id="btnRotate" title="Rotate the picture 90° (also applies to recordings)">
+          <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+          <span>Rotate</span>
+        </button>
+        <button class="ctl" id="btnTorch" aria-pressed="false" title="Flashlight">
+          <svg viewBox="0 0 24 24"><path d="M8 3h8v4l-2 3v11h-4V10L8 7z"/><path d="M11 13h2"/></svg>
+          <span>Light</span>
+        </button>
+      </div>
     </div>
     <p class="note" id="liveNote" hidden></p>
   </section>
 
   <!-- RECORDINGS -->
   <section id="tab-recordings" class="tab">
-    <div class="days" id="days"></div>
+    <div class="chips" id="recCams"></div>
+    <div class="days chips" id="days"></div>
 
     <div class="player">
       <div class="pv">
@@ -104,6 +107,11 @@
       </div>
     </div>
 
+    <div class="card events-card" id="eventsCard" hidden>
+      <h3>Motion <span class="count" id="eventCount"></span></h3>
+      <div class="events" id="events"></div>
+    </div>
+
     <div class="card export">
       <h3>Save footage</h3>
       <p class="hint">Pick any stretch of time and download it as one video. Drag on the timeline with <b>Shift</b> held (or use the buttons) to select.</p>
@@ -117,56 +125,87 @@
         <button class="btn primary" id="exGo">Download video</button>
       </div>
     </div>
-    <p class="empty" id="noClips" hidden>No recordings yet. Footage appears here a few minutes after the camera starts.</p>
+    <p class="empty" id="noClips" hidden>No recordings yet. Footage appears here a few minutes after a camera starts.</p>
   </section>
 
   <!-- SETTINGS -->
   <section id="tab-settings" class="tab">
     <div class="cards">
+      <div class="card wide">
+        <h3>Cameras</h3>
+        <div class="chips" id="setCams"></div>
+        <div id="camSettings">
+          <label class="row">Name
+            <span class="dirrow"><input type="text" id="setName" maxlength="40" spellcheck="false"><button class="btn" id="btnName">Save</button></span>
+          </label>
+          <div class="cols">
+            <div>
+              <label class="row">Lens <select id="setCamera"></select></label>
+              <label class="row">Quality
+                <select id="setQuality">
+                  <option value="640x480">Low · 480p</option>
+                  <option value="1280x720">Standard · 720p</option>
+                  <option value="1920x1080">High · 1080p</option>
+                </select>
+              </label>
+              <label class="row">Frame rate <select id="setFps"><option>10</option><option>15</option><option>20</option><option>30</option></select></label>
+              <label class="row">Bitrate
+                <select id="setBitrate">
+                  <option value="500000">0.5 Mbps · smallest files</option>
+                  <option value="1000000">1 Mbps · balanced</option>
+                  <option value="2000000">2 Mbps · sharp</option>
+                  <option value="4000000">4 Mbps · very sharp</option>
+                </select>
+              </label>
+              <label class="row">Rotate picture
+                <select id="setRotate"><option value="0">No rotation</option><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">90° anticlockwise</option></select>
+              </label>
+            </div>
+            <div>
+              <label class="row">Record continuously <span class="switch"><input type="checkbox" id="setRecord"><i></i></span></label>
+              <label class="row">Microphone <span class="switch"><input type="checkbox" id="setAudio"><i></i></span></label>
+              <label class="row">Speaker volume <input type="range" id="setVolume" min="0" max="100" step="5"></label>
+              <label class="row">Motion detection <span class="switch"><input type="checkbox" id="setMotion"><i></i></span></label>
+              <label class="row">Sensitivity <input type="range" id="setSens" min="0" max="100" step="5"></label>
+              <label class="row">Alerts from this camera <span class="switch"><input type="checkbox" id="setCamAlerts"><i></i></span></label>
+            </div>
+          </div>
+          <p class="hint" id="motionHint" hidden></p>
+          <div class="mode-actions"><button class="btn ghost danger" id="btnRemove" hidden>Remove this camera</button></div>
+        </div>
+      </div>
+
       <div class="card">
-        <h3>Camera</h3>
-        <label class="row">Lens
-          <select id="setCamera"><option value="0">Rear</option><option value="1">Front</option></select>
+        <h3>Alerts to your phone</h3>
+        <label class="row">Armed (send alerts on motion) <span class="switch"><input type="checkbox" id="setArmed"><i></i></span></label>
+        <div class="row col">
+          <span>ntfy topic <small class="dim">free push app for Android/iPhone</small></span>
+          <span class="dirrow"><input type="text" id="setNtfy" placeholder="https://ntfy.sh/your-secret-topic" spellcheck="false"><button class="btn" id="btnNtfyNew">New</button></span>
+          <p class="hint" id="ntfyHelp">Install <b>ntfy</b> from the Play Store / App Store, tap <b>+</b>, and subscribe to the topic name after <code>ntfy.sh/</code>. Anyone who knows the topic can read it, so keep the random name.</p>
+        </div>
+        <details>
+          <summary>Telegram instead (optional)</summary>
+          <label class="row col">Bot token <input type="text" id="setTgToken" placeholder="123456:ABC… from @BotFather" spellcheck="false"></label>
+          <label class="row col">Chat id <input type="text" id="setTgChat" placeholder="your chat id" spellcheck="false"></label>
+        </details>
+        <label class="row">Wait between alerts
+          <select id="setCooldown"><option value="30">30 s</option><option value="60">1 min</option><option value="300">5 min</option><option value="900">15 min</option></select>
         </label>
-        <label class="row">Quality
-          <select id="setQuality">
-            <option value="640x480">Low · 480p</option>
-            <option value="1280x720">Standard · 720p</option>
-            <option value="1920x1080">High · 1080p</option>
-          </select>
-        </label>
-        <label class="row">Frame rate
-          <select id="setFps"><option>10</option><option>15</option><option>20</option><option>30</option></select>
-        </label>
-        <label class="row">Bitrate
-          <select id="setBitrate">
-            <option value="500000">0.5 Mbps · smallest files</option>
-            <option value="1000000">1 Mbps · balanced</option>
-            <option value="2000000">2 Mbps · sharp</option>
-            <option value="4000000">4 Mbps · very sharp</option>
-          </select>
-        </label>
-        <label class="row">Rotate picture
-          <select id="setRotate"><option value="0">No rotation</option><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">90° anticlockwise</option></select>
-        </label>
-        <label class="row">Microphone
-          <span class="switch"><input type="checkbox" id="setAudio"><i></i></span>
-        </label>
-        <label class="row">Speaker volume
-          <input type="range" id="setVolume" min="0" max="100" step="5">
-        </label>
+        <label class="row col">Viewer address in alerts <input type="text" id="setViewerUrl" placeholder="https://your-pc.tailnet.ts.net" spellcheck="false"></label>
+        <div class="mode-actions">
+          <button class="btn primary" id="btnAlertsSave">Save</button>
+          <button class="btn ghost" id="btnAlertsTest">Send a test alert</button>
+          <button class="btn ghost" id="btnBrowserNotify">Notify in this browser too</button>
+        </div>
       </div>
 
       <div class="card">
         <h3>Recording</h3>
-        <label class="row">Record continuously
-          <span class="switch"><input type="checkbox" id="setRecord"><i></i></span>
-        </label>
         <div class="row col">Save recordings in
           <div class="dirrow"><input type="text" id="setDir" spellcheck="false" placeholder="D:\CCTV"><button class="btn" id="btnDir">Save</button></div>
         </div>
         <label class="row">Keep recordings for
-          <select id="setRetention"><option value="24">1 day</option><option value="48">2 days</option><option value="72">3 days</option><option value="168">7 days</option></select>
+          <select id="setRetention"><option value="24">1 day</option><option value="48">2 days</option><option value="72">3 days</option><option value="168">7 days</option><option value="336">14 days</option></select>
         </label>
         <div class="storage">
           <div class="bar"><i id="storageBar"></i></div>
@@ -176,8 +215,9 @@
       </div>
 
       <div class="card wide">
-        <h3>Phone mode</h3>
-        <p class="hint">Surveillance mode turns the phone into a camera-only device: other apps disabled, Bluetooth, location and mobile data off, screen dimmed. Normal mode restores the apps and settings exactly as they were. Nothing is uninstalled. Needs the phone connected to ADB (USB or wireless debugging).</p>
+        <h3>Phones on USB</h3>
+        <p class="hint">Plug a phone in with USB debugging on to install the camera app, or to switch it between <b>Surveillance</b> (camera-only: other apps disabled, Bluetooth, location and mobile data off, screen dimmed) and <b>Normal</b> (everything restored exactly). Nothing is uninstalled.</p>
+        <div class="row">Phone <span class="dirrow"><select id="adbDevices"><option value="">— none found —</option></select><button class="btn ghost" id="btnAdbRefresh">Refresh</button></span></div>
         <div class="modes">
           <button class="mode" data-mode="surveillance">
             <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg>
@@ -189,15 +229,15 @@
           </button>
         </div>
         <div class="mode-actions">
-          <button class="btn ghost" id="btnPreview">Preview changes</button>
-          <button class="btn ghost" id="btnReinstall">Repair phone app</button>
+          <button class="btn primary" id="btnInstall">Install / repair camera app</button>
+          <button class="btn ghost" id="btnPreview">Preview Surveillance changes</button>
         </div>
         <pre class="log" id="modeLog" hidden></pre>
       </div>
 
       <div class="card">
-        <h3>Phone</h3>
-        <dl class="info" id="phoneInfo"></dl>
+        <h3>About</h3>
+        <dl class="info" id="aboutInfo"></dl>
       </div>
     </div>
   </section>

@@ -9,6 +9,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.ImageFormat;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
+import android.media.Image;
+import android.media.ImageReader;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
@@ -75,7 +80,7 @@ public class CamService extends Service {
     static final int BEACON_PORT = 47800;
 
     // phone -> PC
-    static final int T_HELLO = 1, T_VIDEO = 2, T_AUDIO = 3, T_STATUS = 4;
+    static final int T_HELLO = 1, T_VIDEO = 2, T_AUDIO = 3, T_STATUS = 4, T_MOTION = 5, T_SNAPSHOT = 6;
     // PC -> phone
     static final int T_TALK = 0x10, T_CMD = 0x11;
 
@@ -109,6 +114,13 @@ public class CamService extends Service {
     volatile String videoDesc = "";
     int retryDelayMs = 3000;
 
+    // motion detection (runs on a small YUV copy of the camera stream)
+    volatile ImageReader reader;
+    volatile boolean motionSupported = true;
+    HandlerThread motionThread;
+    Handler motionHandler;
+    final Motion motion = new Motion();
+
     // audio
     Thread audioThread;
     volatile boolean audioOn;
@@ -131,10 +143,14 @@ public class CamService extends Service {
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences("cfg", MODE_PRIVATE);
-        if (prefs.getString("key", null) == null) {
-            prefs.edit().putString("key", randomKey()).apply();
+        // A stable id lets the PC tell several phones apart. No key is set here: the phone pairs
+        // with the first PC that connects (or the key the PC pushes over adb).
+        if (prefs.getString("id", null) == null) {
+            prefs.edit().putString("id", randomKey().toLowerCase()).apply();
         }
     }
+
+    String camName() { return prefs.getString("name", Build.MODEL); }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -168,6 +184,9 @@ public class CamService extends Service {
         wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "OldPhoneCCTV:wifi");
         wifiLock.acquire();
 
+        motionThread = new HandlerThread("motion");
+        motionThread.start();
+        motionHandler = new Handler(motionThread.getLooper());
         camThread = new HandlerThread("cam");
         camThread.start();
         camHandler = new Handler(camThread.getLooper());
@@ -197,6 +216,7 @@ public class CamService extends Service {
             camThread.quitSafely();
             try { camThread.join(3000); } catch (InterruptedException ignored) {}
         }
+        if (motionThread != null) motionThread.quitSafely();
         if (talkThread != null) talkThread.interrupt();
         if (beaconThread != null) beaconThread.interrupt();
         if (statusThread != null) statusThread.interrupt();
@@ -254,27 +274,20 @@ public class CamService extends Service {
             drainThread.start();
             videoDesc = size.getWidth() + "x" + size.getHeight() + " @" + fpsRange;
 
+            // Small second stream for motion detection (skipped if disabled or unsupported).
+            motion.reset();
+            if (prefs.getBoolean("motion", true) && motionSupported) {
+                Size ms = pickMotionSize(map.getOutputSizes(ImageFormat.YUV_420_888), size);
+                if (ms != null) {
+                    reader = ImageReader.newInstance(ms.getWidth(), ms.getHeight(), ImageFormat.YUV_420_888, 2);
+                    reader.setOnImageAvailableListener(this::onMotionFrame, motionHandler);
+                }
+            }
+
             cm.openCamera(id, new CameraDevice.StateCallback() {
                 @Override public void onOpened(CameraDevice d) {
                     camera = d;
-                    try {
-                        d.createCaptureSession(Collections.singletonList(encSurface), new CameraCaptureSession.StateCallback() {
-                            @Override public void onConfigured(CameraCaptureSession s) {
-                                session = s;
-                                try {
-                                    applyRequest(fpsRange);
-                                    camState = "streaming";
-                                    retryDelayMs = 3000;
-                                    lastError = null;
-                                    sendHello();
-                                    updateNotification();
-                                } catch (Exception e) { fail("capture request failed", e); }
-                            }
-                            @Override public void onConfigureFailed(CameraCaptureSession s) {
-                                fail("camera refused the stream configuration", null);
-                            }
-                        }, camHandler);
-                    } catch (Exception e) { fail("could not create capture session", e); }
+                    createSession(d, fpsRange);
                 }
                 @Override public void onDisconnected(CameraDevice d) { fail("camera disconnected", null); }
                 @Override public void onError(CameraDevice d, int error) { fail("camera error " + error, null); }
@@ -284,6 +297,40 @@ public class CamService extends Service {
         }
     }
 
+    void createSession(CameraDevice d, Range<Integer> fpsRange) {
+        final ImageReader r = reader;
+        java.util.List<Surface> outs = new java.util.ArrayList<>();
+        outs.add(encSurface);
+        if (r != null) outs.add(r.getSurface());
+        try {
+            d.createCaptureSession(outs, new CameraCaptureSession.StateCallback() {
+                @Override public void onConfigured(CameraCaptureSession s) {
+                    session = s;
+                    try {
+                        applyRequest(fpsRange);
+                        camState = "streaming";
+                        retryDelayMs = 3000;
+                        lastError = null;
+                        sendHello();
+                        updateNotification();
+                    } catch (Exception e) { fail("capture request failed", e); }
+                }
+                @Override public void onConfigureFailed(CameraCaptureSession s) {
+                    if (r != null) {
+                        // Some camera drivers can't do video + a second stream: run without motion.
+                        Log.w(TAG, "camera refused the motion stream; motion detection off");
+                        motionSupported = false;
+                        reader = null;
+                        r.close();
+                        createSession(d, fpsRange);
+                    } else {
+                        fail("camera refused the stream configuration", null);
+                    }
+                }
+            }, camHandler);
+        } catch (Exception e) { fail("could not create capture session", e); }
+    }
+
     Range<Integer> currentFps;
 
     void applyRequest(Range<Integer> fpsRange) throws Exception {
@@ -291,6 +338,7 @@ public class CamService extends Service {
         if (camera == null || session == null) return;
         CaptureRequest.Builder b = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
         b.addTarget(encSurface);
+        if (reader != null) b.addTarget(reader.getSurface());
         b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
@@ -320,6 +368,8 @@ public class CamService extends Service {
         session = null;
         try { if (camera != null) camera.close(); } catch (Exception ignored) {}
         camera = null;
+        if (reader != null) { try { reader.close(); } catch (Exception ignored) {} reader = null; }
+        if (motion.active) endMotion();
         if (drainThread != null) {
             try { drainThread.join(1000); } catch (InterruptedException ignored) {}
             drainThread = null;
@@ -434,6 +484,145 @@ public class CamService extends Service {
             if (score < bestScore) { bestScore = score; best = s; }
         }
         return best != null ? best : sizes[0];
+    }
+
+    /** Smallest YUV size of at least 320 px wide with the video's aspect ratio (cheap to analyse). */
+    static Size pickMotionSize(Size[] sizes, Size video) {
+        if (sizes == null) return null;
+        double want = (double) video.getWidth() / video.getHeight();
+        Size best = null;
+        for (Size s : sizes) {
+            if (s.getWidth() < 320 || s.getWidth() > 800) continue;
+            if (Math.abs((double) s.getWidth() / s.getHeight() - want) > 0.05) continue;
+            if (best == null || s.getWidth() < best.getWidth()) best = s;
+        }
+        if (best == null) {
+            for (Size s : sizes) if (s.getWidth() >= 320 && s.getWidth() <= 800 && (best == null || s.getWidth() < best.getWidth())) best = s;
+        }
+        return best;
+    }
+
+    // ------------------------------------------------------------------ motion detection
+
+    /** Compares a 32x18 grid of brightness cells against a slowly adapting background. */
+    static class Motion {
+        static final int GW = 32, GH = 18;
+        float[] bg;
+        long lastProcess, lastMotion, startedAt;
+        int hits;
+        boolean active;
+        float peak, score;
+        void reset() { bg = null; hits = 0; active = false; peak = 0; score = 0; }
+    }
+
+    void onMotionFrame(ImageReader r) {
+        Image img;
+        try { img = r.acquireLatestImage(); } catch (Exception e) { return; }
+        if (img == null) return;
+        try {
+            long now = SystemClock.elapsedRealtime();
+            if (now - motion.lastProcess < 300) return;   // ~3 checks a second is plenty
+            motion.lastProcess = now;
+            Image.Plane y = img.getPlanes()[0];
+            ByteBuffer buf = y.getBuffer();
+            int rs = y.getRowStride(), ps = y.getPixelStride(), w = img.getWidth(), h = img.getHeight();
+            float[] cells = new float[Motion.GW * Motion.GH];
+            for (int gy = 0; gy < Motion.GH; gy++) {
+                for (int gx = 0; gx < Motion.GW; gx++) {
+                    int sum = 0;
+                    for (int sy = 0; sy < 2; sy++) for (int sx = 0; sx < 2; sx++) {
+                        int px = (gx * 2 + sx) * w / (Motion.GW * 2) + w / (Motion.GW * 4);
+                        int py = (gy * 2 + sy) * h / (Motion.GH * 2) + h / (Motion.GH * 4);
+                        sum += buf.get(py * rs + px * ps) & 0xFF;
+                    }
+                    cells[gy * Motion.GW + gx] = sum / 4f;
+                }
+            }
+            if (motion.bg == null) { motion.bg = cells; return; }
+            // Ignore whole-picture brightness shifts (lights, clouds, auto-exposure).
+            float shift = 0;
+            for (int i = 0; i < cells.length; i++) shift += cells[i] - motion.bg[i];
+            shift /= cells.length;
+            int sens = prefs.getInt("sensitivity", 50);           // 0..100
+            float thr = 30 - sens * 0.22f;                         // per-cell change needed
+            int changed = 0;
+            for (int i = 0; i < cells.length; i++) if (Math.abs(cells[i] - motion.bg[i] - shift) > thr) changed++;
+            float frac = changed / (float) cells.length;
+            float minFrac = 0.012f + (100 - sens) * 0.0006f;       // share of the picture that must change
+            motion.score = frac;
+            float adapt = motion.active ? 0.02f : 0.08f;
+            for (int i = 0; i < cells.length; i++) motion.bg[i] += (cells[i] - motion.bg[i]) * adapt;
+
+            if (frac > minFrac) {
+                motion.hits++;
+                motion.lastMotion = now;
+                if (motion.active) motion.peak = Math.max(motion.peak, frac);
+                else if (motion.hits >= 2) startMotion(img, frac);
+            } else {
+                motion.hits = 0;
+                if (motion.active && now - motion.lastMotion > 5000) endMotion();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "motion frame", e);
+        } finally {
+            img.close();
+        }
+    }
+
+    void startMotion(Image img, float frac) {
+        motion.active = true;
+        motion.peak = frac;
+        motion.startedAt = System.currentTimeMillis();
+        Client c = client;
+        if (c == null || !c.authed) return;
+        try {
+            JSONObject j = new JSONObject();
+            j.put("on", true);
+            j.put("score", Math.round(frac * 1000) / 1000.0);
+            j.put("t", motion.startedAt);
+            c.send(T_MOTION, j.toString().getBytes(StandardCharsets.UTF_8));
+            byte[] jpg = toJpeg(img);
+            if (jpg != null) c.send(T_SNAPSHOT, jpg);
+        } catch (Exception ignored) {}
+    }
+
+    void endMotion() {
+        motion.active = false;
+        Client c = client;
+        if (c == null || !c.authed) return;
+        try {
+            JSONObject j = new JSONObject();
+            j.put("on", false);
+            j.put("peak", Math.round(motion.peak * 1000) / 1000.0);
+            j.put("t", System.currentTimeMillis());
+            c.send(T_MOTION, j.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ignored) {}
+    }
+
+    /** YUV_420_888 -> NV21 -> JPEG, for the motion snapshot. */
+    static byte[] toJpeg(Image img) {
+        try {
+            int w = img.getWidth(), h = img.getHeight();
+            byte[] nv21 = new byte[w * h * 3 / 2];
+            Image.Plane[] p = img.getPlanes();
+            ByteBuffer yb = p[0].getBuffer(), ub = p[1].getBuffer(), vb = p[2].getBuffer();
+            int yrs = p[0].getRowStride(), yps = p[0].getPixelStride();
+            int i = 0;
+            for (int row = 0; row < h; row++) for (int col = 0; col < w; col++) nv21[i++] = yb.get(row * yrs + col * yps);
+            int crs = p[1].getRowStride(), cps = p[1].getPixelStride();
+            for (int row = 0; row < h / 2; row++) {
+                for (int col = 0; col < w / 2; col++) {
+                    int off = row * crs + col * cps;
+                    nv21[i++] = vb.get(off);
+                    nv21[i++] = ub.get(off);
+                }
+            }
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            new YuvImage(nv21, ImageFormat.NV21, w, h, null).compressToJpeg(new Rect(0, 0, w, h), 75, out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     static Range<Integer> pickFps(Range<Integer>[] ranges, int fps) {
@@ -570,11 +759,7 @@ public class CamService extends Service {
             server.bind(new InetSocketAddress(PORT));
             while (running) {
                 Socket s = server.accept();
-                Client old = client;
-                Client c = new Client(s);
-                client = c;
-                if (old != null) old.close();
-                c.start();
+                new Client(s).start();   // becomes the active client only after a correct key
             }
         } catch (IOException e) {
             if (running) lastError = "network: " + e.getMessage();
@@ -587,7 +772,9 @@ public class CamService extends Service {
             while (running) {
                 JSONObject j = new JSONObject();
                 j.put("oldphonecctv", 1);
-                j.put("name", Build.MODEL);
+                j.put("id", prefs.getString("id", ""));
+                j.put("name", camName());
+                j.put("paired", prefs.getString("key", null) != null);
                 j.put("port", PORT);
                 byte[] b = j.toString().getBytes(StandardCharsets.UTF_8);
                 try {
@@ -624,6 +811,8 @@ public class CamService extends Service {
                 j.put("cam", camState);
                 j.put("video", videoDesc);
                 j.put("audio", audioOn);
+                j.put("motion", motion.active);
+                j.put("motionScore", Math.round(motion.score * 1000) / 1000.0);
                 j.put("error", lastError == null ? JSONObject.NULL : lastError);
                 WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
                 j.put("rssi", wm.getConnectionInfo().getRssi());
@@ -638,9 +827,12 @@ public class CamService extends Service {
         if (c == null || !c.authed) return;
         try {
             JSONObject j = new JSONObject();
+            j.put("id", prefs.getString("id", ""));
+            j.put("name", camName());
             j.put("model", Build.MANUFACTURER + " " + Build.MODEL);
             j.put("android", Build.VERSION.RELEASE);
-            j.put("app", 1);
+            j.put("app", 2);
+            j.put("motionAvailable", motionSupported && reader != null);
             JSONObject cfg = new JSONObject();
             cfg.put("camera", prefs.getString("camera", "back"));
             cfg.put("width", prefs.getInt("width", 1280));
@@ -650,6 +842,8 @@ public class CamService extends Service {
             cfg.put("audio", prefs.getBoolean("audio", true));
             cfg.put("torch", prefs.getBoolean("torch", false));
             cfg.put("volume", prefs.getInt("volume", 90));
+            cfg.put("motion", prefs.getBoolean("motion", true));
+            cfg.put("sensitivity", prefs.getInt("sensitivity", 50));
             j.put("cfg", cfg);
             j.put("video", videoDesc);
             j.put("audioRate", AUDIO_RATE);
@@ -701,7 +895,15 @@ public class CamService extends Service {
                 if (j.has("volume")) e.putInt("volume", Math.max(0, Math.min(100, j.getInt("volume"))));
                 if (j.has("torch")) e.putBoolean("torch", j.getBoolean("torch"));
                 if (j.has("audio")) e.putBoolean("audio", j.getBoolean("audio"));
+                if (j.has("name")) e.putString("name", j.getString("name").trim());
+                if (j.has("sensitivity")) e.putInt("sensitivity", Math.max(0, Math.min(100, j.getInt("sensitivity"))));
+                if (j.has("motion")) {
+                    e.putBoolean("motion", j.getBoolean("motion"));
+                    motionSupported = true;   // let it try the second stream again
+                    restartVideo = true;
+                }
                 e.commit();
+                if (j.has("sensitivity")) motion.reset();
                 if (j.has("audio")) { if (j.getBoolean("audio")) startAudio(); else stopAudio(); }
                 if (restartVideo) {
                     camHandler.post(this::startVideo);
@@ -771,12 +973,23 @@ public class CamService extends Service {
                     if (!authed) {
                         if (type != T_CMD) break;
                         JSONObject j = new JSONObject(new String(payload, StandardCharsets.UTF_8));
-                        if (!"auth".equals(j.optString("cmd")) || !prefs.getString("key", "").equals(j.optString("key"))) {
+                        String offered = j.optString("key");
+                        String mine = prefs.getString("key", null);
+                        if (mine == null && offered.length() >= 8) {
+                            // Unpaired phone: trust the first PC that connects, and only that PC from now on.
+                            prefs.edit().putString("key", offered).commit();
+                            mine = offered;
+                        }
+                        if (!"auth".equals(j.optString("cmd")) || mine == null || !mine.equals(offered)) {
                             send(T_STATUS, "{\"error\":\"bad key\"}".getBytes(StandardCharsets.UTF_8));
                             SystemClock.sleep(300);
                             break;
                         }
                         authed = true;
+                        // Only now take over from any previous PC connection.
+                        Client old = client;
+                        client = this;
+                        if (old != null && old != this) old.close();
                         viewer = s.getInetAddress().getHostAddress();
                         updateNotification();
                         sendHello();

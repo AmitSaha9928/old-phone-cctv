@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.oldphonecctv.camera"
-    android:versionCode="1"
-    android:versionName="1.0">
+    android:versionCode="2"
+    android:versionName="1.0.0">
 
     <!-- targetSdk 29 on purpose: lets the camera service start itself after a reboot
          with camera + mic access, which newer targets forbid for background starts. -->
@@ -53,6 +53,7 @@
                 <action android:name="com.oldphonecctv.camera.START" />
                 <action android:name="com.oldphonecctv.camera.STOP" />
                 <action android:name="com.oldphonecctv.camera.SET_KEY" />
+                <action android:name="com.oldphonecctv.camera.UNPAIR" />
             </intent-filter>
         </receiver>
     </application>
